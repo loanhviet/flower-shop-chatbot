@@ -103,10 +103,89 @@ class FlowerProductPipelineTest(unittest.TestCase):
             result["clean_description"],
             "Bó Hoa M250 là bó hoa hồng xanh và cúc họa mi đẹp",
         )
-        self.assertIn("Tên sản phẩm: Bó Hoa M250", result["rag_text"])
-        self.assertIn("Danh mục: Bó Hoa Sinh Nhật", result["rag_text"])
+        self.assertEqual(result["product_type"], "bó hoa")
+        self.assertIn("sinh nhật", result["occasion_tags"])
+        self.assertIn("hoa hồng", result["flower_tags"])
+        self.assertIn("cúc họa mi", result["flower_tags"])
+        self.assertIn("xanh", result["color_tags"])
+        self.assertIn("Sản phẩm: bó hoa", result["rag_text"])
+        self.assertIn("Mã/tên gốc: Bó Hoa M250", result["rag_text"])
+        self.assertIn("Dịp phù hợp: sinh nhật", result["rag_text"])
         self.assertIn("Giá hiện tại: 600.000 VND", result["rag_text"])
+        self.assertIn("Mô tả ngắn:", result["rag_text"])
         self.assertIn("URL: https://hoatuoimymy.com/bo-hoa-m250/", result["rag_text"])
+
+    def test_pipeline_infers_khai_truong_tags(self):
+        item = FlowerProductItem(
+            name="Hoa Khai Trương M371",
+            price_text="1.600.000 ₫ 1.400.000 ₫",
+            description="Kệ hoa khai trương tông hồng sang trọng với hoa lan.",
+            image_url="https://hoatuoimymy.com/image.jpg",
+            product_url="https://hoatuoimymy.com/hoa-khai-truong-m371/",
+            source="hoatuoimymy.com",
+            categories=["Hoa Khai Trương", "Kệ Hoa Khai Trương"],
+        )
+
+        result = FlowerProductPipeline().process_item(item)
+
+        self.assertEqual(result["product_type"], "hoa khai trương")
+        self.assertIn("khai trương", result["occasion_tags"])
+        self.assertIn("hoa lan", result["flower_tags"])
+        self.assertIn("hồng", result["color_tags"])
+        self.assertIn("Sản phẩm: hoa khai trương", result["rag_text"])
+
+    def test_pipeline_prefers_name_for_product_type_over_categories(self):
+        item = FlowerProductItem(
+            name="Giỏ Hoa M166",
+            price_text="900.000 ₫ 790.000 ₫",
+            description="Giỏ hoa hồng đỏ và hoa cẩm tú cầu đẹp.",
+            image_url="https://hoatuoimymy.com/image.jpg",
+            product_url="https://hoatuoimymy.com/gio-hoa-m166/",
+            source="hoatuoimymy.com",
+            categories=["Giỏ Hoa", "Lẵng Hoa Khai Trương"],
+        )
+
+        result = FlowerProductPipeline().process_item(item)
+
+        self.assertEqual(result["product_type"], "giỏ hoa")
+        self.assertIn("khai trương", result["occasion_tags"])
+        self.assertIn("Sản phẩm: giỏ hoa", result["rag_text"])
+
+    def test_pipeline_does_not_treat_cam_ket_as_orange_color(self):
+        item = FlowerProductItem(
+            name="Hoa Chia Buồn M12",
+            price_text="1.750.000 ₫ 1.649.000 ₫",
+            description="Shop cam kết hoa lan trắng tươi mới và trang trọng.",
+            image_url="https://hoatuoimymy.com/image.jpg",
+            product_url="https://hoatuoimymy.com/hoa-chia-buon-m12/",
+            source="hoatuoimymy.com",
+            categories=["Hoa Đám Tang"],
+        )
+
+        result = FlowerProductPipeline().process_item(item)
+
+        self.assertIn("trắng", result["color_tags"])
+        self.assertNotIn("cam", result["color_tags"])
+
+    def test_pipeline_marks_missing_price_as_contact_price_and_shortens_rag_text(self):
+        long_description = " ".join(["Lan hồ điệp trắng sang trọng"] * 80)
+        item = FlowerProductItem(
+            name="Hoa Lan Hồ Điệp M381",
+            description=long_description,
+            image_url="https://hoatuoimymy.com/image.jpg",
+            product_url="https://hoatuoimymy.com/hoa-lan-ho-diep-m381/",
+            source="hoatuoimymy.com",
+            categories=["Lan Hồ Điệp"],
+        )
+
+        result = FlowerProductPipeline().process_item(item)
+
+        self.assertEqual(result["product_type"], "lan hồ điệp")
+        self.assertIn("lan hồ điệp", result["flower_tags"])
+        self.assertIn("trắng", result["color_tags"])
+        self.assertIn("Giá: liên hệ", result["rag_text"])
+        self.assertIn("URL: https://hoatuoimymy.com/hoa-lan-ho-diep-m381/", result["rag_text"])
+        self.assertLess(len(result["rag_text"]), len(long_description))
 
     def test_pipeline_drops_duplicate_product_url(self):
         pipeline = FlowerProductPipeline()
@@ -180,6 +259,9 @@ class FlowerProductPipelineTest(unittest.TestCase):
         self.assertEqual(report["missing_price"], 1)
         self.assertEqual(report["missing_image"], 1)
         self.assertEqual(report["missing_clean_description"], 1)
+        self.assertEqual(report["missing_product_type"], 2)
+        self.assertEqual(report["missing_tags"], 2)
+        self.assertEqual(report["contact_price"], 1)
         self.assertEqual(report["category_count"], 2)
         self.assertEqual(report["category_distribution"]["Hoa Hong"], 2)
         self.assertEqual(report["valid_price_min"], 350000)

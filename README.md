@@ -1,6 +1,8 @@
 # flower-shop-chatbot
 
-Project scaffold for a flower shop chatbot.
+Flower shop chatbot project. The current focus is preparing a clean product
+catalog from flower shop pages so the chatbot can later search, recommend, and
+answer with grounded product information.
 
 ## Structure
 
@@ -10,13 +12,11 @@ Project scaffold for a flower shop chatbot.
 - `docs/`
 - `notebooks/`
 
-## Getting started
-
-Add the implementation for each component inside the matching folder.
-
 ## Crawler
 
-The first crawler target is `hoatuoimymy.com`. It uses Scrapy sitemap crawling and writes a clean product catalog as JSONL for later chatbot/RAG ingestion.
+The first data source is `hoatuoimymy.com`. The crawler exports product JSONL
+with normalized prices, search tags, and compact `rag_text` for chatbot/RAG
+ingestion.
 
 ### Install
 
@@ -26,69 +26,41 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run
+### Crawl Data
 
-Run validation crawls before crawling the full catalog:
-
-```bash
-cd crawler
-scrapy crawl hoatuoimymy -s CLOSESPIDER_ITEMCOUNT=50 -O ../data/processed/sample_hoatuoimymy_50.jsonl
-scrapy crawl hoatuoimymy -s CLOSESPIDER_ITEMCOUNT=200 -O ../data/processed/sample_hoatuoimymy_200.jsonl
-```
-
-Then crawl the full catalog:
-
-```bash
-cd crawler
-scrapy crawl hoatuoimymy -O ../data/processed/hoatuoimymy_products.jsonl
-```
-
-For a tiny smoke-test crawl:
-
-```bash
-cd crawler
-scrapy crawl hoatuoimymy -s CLOSESPIDER_ITEMCOUNT=10 -O ../data/processed/sample_hoatuoimymy.jsonl
-```
-
-Each crawl writes a quality report to:
-
-```text
-data/processed/hoatuoimymy_quality_report.json
-```
-
-Override the report destination when needed:
+Run a small validation crawl first:
 
 ```bash
 cd crawler
 scrapy crawl hoatuoimymy \
-  -s FLOWER_QUALITY_REPORT_PATH=../data/processed/custom_quality_report.json \
   -s CLOSESPIDER_ITEMCOUNT=50 \
-  -O ../data/processed/sample_hoatuoimymy_50.jsonl
+  -s FLOWER_QUALITY_REPORT_PATH=../data/processed/hoatuoimymy_quality_report_tags_sample.json \
+  -L INFO \
+  -O ../data/processed/sample_hoatuoimymy_tags_50.jsonl
 ```
 
-Before running a full crawl, review the report and make sure missing price,
-missing image, missing clean description, and duplicate URL counts are acceptable
-for chatbot ingestion.
+Then crawl the full tagged catalog:
 
-### Output schema
+```bash
+cd crawler
+scrapy crawl hoatuoimymy \
+  -s FLOWER_QUALITY_REPORT_PATH=../data/processed/hoatuoimymy_quality_report_full_tags.json \
+  -L INFO \
+  -O ../data/processed/hoatuoimymy_products_tagged.jsonl
+```
 
-Each JSONL line is one product object:
+Review the quality report before using the data. The key checks are missing
+prices, missing images, missing search tags, duplicate URLs, and dropped items.
 
-- `product_id`: stable short hash from source and product URL.
-- `name`: product name.
-- `price_text`: original price text from the product page.
-- `price_min`, `price_max`: parsed VND price bounds when available.
-- `current_price`: price the chatbot should treat as the active price.
-- `original_price`: listed/original price; equals `current_price` when there is no sale price.
-- `sale_price`: discounted price when the page exposes multiple prices.
-- `display_price`: formatted active price, for example `650.000 VND`.
-- `currency`: `VND`.
-- `availability`: stock/availability text when available.
-- `short_description`, `description`: normalized product descriptions.
-- `clean_description`: description cleaned for chatbot/RAG usage.
-- `rag_text`: compact product text assembled for search/RAG ingestion.
-- `categories`: list of product categories.
-- `image_url`: absolute product image URL when available.
-- `product_url`: canonical crawled product page URL.
-- `source`: source domain.
-- `crawled_at`: UTC ISO timestamp.
+### Chatbot Data
+
+Each JSONL product keeps the original product fields and adds chatbot-friendly
+fields:
+
+- `rag_text`: compact text to embed/search.
+- `product_type`: inferred type such as `bó hoa`, `giỏ hoa`, `hoa khai trương`.
+- `occasion_tags`, `flower_tags`, `color_tags`: simple search filters.
+- `current_price`, `display_price`: normalized active price; missing-price products use `Giá: liên hệ` in `rag_text`.
+- `image_url`, `product_url`: product references for chatbot answers.
+
+For RAG, prefer `rag_text` plus the tag fields over raw `description`.
