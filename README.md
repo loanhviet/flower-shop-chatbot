@@ -64,3 +64,17 @@ fields:
 - `image_url`, `product_url`: product references for chatbot answers.
 
 For RAG, prefer `rag_text` plus the tag fields over raw `description`.
+
+### Build Retrieval Corpus
+
+Build the local corpus before adding embeddings or Qdrant:
+
+```bash
+python -m backend.rag.corpus
+```
+
+This generates `data/processed/retrieval_corpus.jsonl` locally. Each product
+has one overview document from `rag_text`. Products with a unique
+`clean_description` longer than 1,200 characters also receive detail chunks
+of up to 900 characters with 150 characters of overlap. Repeated descriptions
+do not create detail chunks, preventing duplicate retrieval results.

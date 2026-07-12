@@ -11,5 +11,6 @@ __pycache__/
 *.log
 
 data/raw/
+data/processed/retrieval_corpus.jsonl
 
 .DS_Store
