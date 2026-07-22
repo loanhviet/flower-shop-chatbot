@@ -78,3 +78,79 @@ has one overview document from `rag_text`. Products with a unique
 `clean_description` longer than 1,200 characters also receive detail chunks
 of up to 900 characters with 150 characters of overlap. Repeated descriptions
 do not create detail chunks, preventing duplicate retrieval results.
+
+## Gemini Embeddings and Qdrant
+
+M2 uses `gemini-embedding-2` with 768-dimensional vectors. Unit tests use a
+fake provider and do not require network access.
+
+Copy the local configuration and add your Gemini key:
+
+```bash
+cp .env.example .env
+# Edit GEMINI_API_KEY in .env, then export it for the current shell.
+set -a
+source .env
+set +a
+```
+
+Never commit `.env` or print the API key.
+
+### Start Qdrant
+
+Run the pinned development server on localhost:
+
+```bash
+docker run --name flower-shop-qdrant -d \
+  -p 127.0.0.1:6333:6333 \
+  -v flower-shop-qdrant-data:/qdrant/storage \
+  qdrant/qdrant:v1.18.2
+```
+
+The REST API and dashboard are available at
+`http://127.0.0.1:6333` and `http://127.0.0.1:6333/dashboard`.
+
+### Ingest Documents
+
+Start with a small collection before spending quota on the full corpus:
+
+```bash
+python -m backend.rag.ingest \
+  --limit 10 \
+  --collection flower_products_gemini_embedding_2_768_smoke \
+  --recreate
+```
+
+Then build the full collection:
+
+```bash
+python -m backend.rag.ingest --recreate
+```
+
+The Gemini free tier counts each input document toward its per-minute quota.
+The default `EMBEDDING_REQUESTS_PER_MINUTE=90` keeps ingestion below the
+100-input free-tier limit; a full 1,783-document run can therefore take about
+20 minutes. Keep the process running so it can pause between quota windows.
+
+Normal runs use stable point IDs and idempotent upserts. `--recreate` deletes
+only the configured collection before rebuilding it, so verify
+`QDRANT_URL` and `QDRANT_COLLECTION` before using the flag.
+
+### Semantic Search Smoke Test
+
+```bash
+python -m backend.rag.search "bó hoa hồng đỏ tặng sinh nhật khoảng 600 nghìn"
+python -m backend.rag.search "hoa khai trương sang trọng có hoa lan"
+python -m backend.rag.search "lan hồ điệp trắng giá liên hệ"
+```
+
+Results are JSON objects containing similarity score, product metadata, price,
+image, URL, and source. Metadata filtering, BM25, and hybrid fusion are added
+in M3.
+
+## Provider Boundary
+
+Gemini is used only for embeddings. Answer generation is intentionally deferred
+until M5, where `ChatProvider` will use Alibaba Cloud Model Studio and prioritize
+a Qwen model selected against the available quality, latency, and free quota at
+that time.

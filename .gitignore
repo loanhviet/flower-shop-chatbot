@@ -12,5 +12,9 @@ __pycache__/
 
 data/raw/
 data/processed/retrieval_corpus.jsonl
+data/processed/hoatuoimymy_products_tagged.jsonl
+data/processed/hoatuoimymy_quality_report_full_tags.json
+data/processed/hoatuoimymy_quality_report_tags_sample.json
+data/processed/sample_hoatuoimymy_tags_*.jsonl
 
 .DS_Store
